@@ -8,8 +8,8 @@ import logging
 from flask_socketio import SocketIO, join_room, leave_room, emit
 from flask import Flask, render_template, request
 
-import quiz
-import config as cfg
+from quizit import quiz
+from quizit import config as cfg
 
 
 app = Flask(__name__)
@@ -91,6 +91,8 @@ def fetch(json):
         )
         if player_index:
             players[player_index]['guid'] = json["guid"]
+
+    # TODO check if group is playing and set stuff accordingly.
 
 
 @socketio.on('start_group')
@@ -221,3 +223,5 @@ def answer(json):
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     socketio.run(app, debug=True, host="0.0.0.0")
+
+    # TODO db / save players or
