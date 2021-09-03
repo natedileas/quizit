@@ -90,7 +90,7 @@
       </section>
 
 
-      <section id="status">
+      <section id="status" v-if="debug">
         <div class="container">
           <h1>Status</h1>
           <ul>
@@ -148,6 +148,7 @@
           navStatus: 0,
           n_members: 0,
           n_members_ready: 0,
+          debug: false,
         },
         sockets: {
 
@@ -167,6 +168,10 @@
             this.guid = data.guid;
             this.join = data.join;
             this.watch = data.watch;
+
+            if (this.profile.group != "") {
+              this.joinGroup();
+            }
           },
           new_group_started(data) {
             console.log(data);
@@ -179,27 +184,16 @@
             console.log(data);
             this.join = true;
           },
-          group_join_fail(data) {
-            console.log(data);
-            this.join = false;
-          },
           n_group_members(data) {
             console.log(data);
             this.n_members = data.number;
           },
-
-          round_start_fail(data) {
-            // TODO show fail message
-            console.log(data);
-          },
-
           round_started(data) {
             this.playing = true;
             this.startCountdown = 5; 
             this.originalStartCountdown = 5;
             this.startTimer();
           },
-          
           show_next_item(data) {
             console.log("show_next_item", data);
             if (data.type == "message") {
@@ -226,11 +220,10 @@
               this.reset();   // TODO have a way to keep the same group together?
             }
           },
-          no_more_items(data) {
-            this.playing = false;
-          },
           fail (data){
+            // TODO warn the user somehow.
             console.warn(data);
+            this.reset();
           }
         },
         methods: {
@@ -333,9 +326,6 @@
         computed: {
         },
         watch: {
-          // ready(val) {
-          //   this.readyEvent(val);
-          // }
         },
         mounted() {
           this.reset();

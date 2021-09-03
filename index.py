@@ -47,8 +47,7 @@ def player_connect():
         }
     )
 
-    logging.info("=== Player {} connected! ===".format(request.sid))
-    # status_update()
+    logging.info("Player {} connected!".format(request.sid))
 
 
 @socketio.on("disconnect")
@@ -60,7 +59,6 @@ def player_disconnect():
     if player_index != None:
         players[player_index]["active"] = False
     logging.info("Player disconnected!")
-    # status_update()
 
 
 @socketio.on('fetch')
@@ -94,8 +92,6 @@ def fetch(json):
         if player_index:
             players[player_index]['guid'] = json["guid"]
 
-    # TODO have the player rejoin group if needed.
-
 
 @socketio.on('start_group')
 def start_group(json):
@@ -104,7 +100,7 @@ def start_group(json):
     global players
 
     # TODO make this a real uuid, with a shorter join code.
-    # TODO also make this more robust.
+    # TODO also make this more robust. no while.
     new_group_id = ''.join(random.choices('ABCDEFGH', k=4))
     while new_group_id in groups:
         new_group_id = ''.join(random.choices('ABCDEFGH', k=4))
@@ -125,17 +121,18 @@ def start_group(json):
 
     emit('new_group_started', {'group': new_group_id, 'guid': json['guid']})
 
-    # join_group(dict(group=new_group_id, guid=json['guid']))
-
 # TODO shutdown group
-
-# TODO readiness
 
 
 @socketio.on('join_group')
 def join_group(json):
+    """ this player wants to join this group """
     global groups
     global players
+
+    # TODO check if the've already join
+    # TODO check if the maximum number has been reached
+    # TODO other validation
     group = json['group']
     groups[group]['n_players'] += 1
     join_room(group)
@@ -151,15 +148,13 @@ def join_group(json):
     emit('group_joined')
     emit('n_group_members', dict(number=groups[group]['n_players']), to=group)
 
-# TODO leave_group
-
 
 @socketio.on('leave_group')
 def leave_group(json):
+    """ This player wants to leave the group. """
     global groups
     global players
-    """ This player wants to leave the group. """
-    # TODO check if member
+    # TODO check if member in group
     # TODO check group exists
 
     player_index = next(
@@ -186,7 +181,7 @@ def start_round(json):
     try:
         group = groups[json['group']]
     except KeyError:
-        emit('round_start_fail', {'reason': 'group does not exist'})
+        emit('fail', {'reason': 'group does not exist'})
         return
 
     # TODO check that the starter is a member of the group and the leader.
@@ -219,6 +214,7 @@ def answer(json):
         return
 
     # this will let the question / quiz class compose a message
+    # TODO check that the user is part of this group.
     group['items'].got_answer(json)
 
 
