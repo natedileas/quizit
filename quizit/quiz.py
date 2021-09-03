@@ -3,12 +3,15 @@ Quiz specific code
 """
 
 import glob
+import pathlib
 import yaml
+
+QUIZ_DIR = pathlib.Path(__file__).parent.resolve() / 'quizzes'
 
 
 def available_quizzes():
     output = []
-    for quiz in glob.glob("quizzes/*.yaml"):
+    for quiz in glob.glob(QUIZ_DIR / "*.yaml"):
         file = open(quiz, "r")
         data = yaml.load(file, Loader=yaml.FullLoader)
         output.append({"data": data, "file": quiz})

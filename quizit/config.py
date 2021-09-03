@@ -1,7 +1,9 @@
+import pathlib
+
 import yaml
 
 
 def load():
-    file = open("config.yaml", "r")
+    file = open(pathlib.Path(__file__).parent.resolve() / "config.yaml", "r")
     data = yaml.load(file, Loader=yaml.FullLoader)
     return data

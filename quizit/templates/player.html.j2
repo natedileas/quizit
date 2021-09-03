@@ -1,0 +1,365 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/bootstrap.min.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/custom.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/all.css') }}">
+
+    <title>Quizit</title>
+  </head>
+  <body>
+    <div id="app">
+      <nav class="navbar navbar-dark" :class="{ 'bg-primary': connected, 'bg-danger': !connected }">
+        <a class="navbar-brand" href="#">Quizit</a>
+        <span class="navbar-text">
+          !{ profile.name } <span v-if="profile.team">(!{ teamObj.name })</span>
+          <i class="fas" :class="{ 'fa-link': connected, 'fa-unlink': !connected }"></i>
+          <i style="font-family: monospace;" v-if="$socket.id">!{ $socket.id.substring(0, 4) }</i>
+        </span>
+      </nav>
+
+      <!-- SETUP - join / create / watch group -->
+      <section id="setup" v-if="!join">
+        <div class="container">
+          <h3>Welcome to Quizit!</h3>
+
+          <button type="button" class="btn btn-lg btn-block btn-success" v-on:click="startNewGroup()"><i class="fas fa-check"></i> Start A Group</button>
+
+          <div class="form-group">
+            <label for="group">Group ID</label>
+            <input type="email" class="form-control" id="group" v-model="profile.group" :disabled="join">
+          </div>
+          <button type="button" class="btn btn-lg btn-block btn-success" v-on:click="joinGroup()" :disabled="!profile.group"><i class="fas fa-check"></i>Join A Group</button>
+          
+          <button type="button" class="btn btn-lg btn-block btn-success" v-on:click="watch = true" :disabled="!profile.group"><i class="fas fa-check"></i>Watch A Group</button>
+        </div>
+      </section>
+
+      <!-- WAITING FOR GROUP START -->
+      <section id="leader-start" v-if="profile.leader && !playing">
+        <p>Your group ID is <b> !{ profile.group } </b>. Let everyone know!</p>
+
+        <button type="button" class="btn btn-lg btn-block btn-success" v-on:click="startRound()"><i class="fas fa-times"></i>Start</button>
+      </section>
+
+      <section id="join-group" v-if="join && !playing">
+        <!-- TODO show user count + readiness somehow. -->
+        <p>You're in !{ profile.group } with !{ n_members } people. </p>
+
+        <button type="button" class="btn btn-lg btn-block btn-danger" v-on:click="leaveGroup()"><i class="fas fa-times"></i> Leave Group</button>
+      </section>
+
+      <!-- MAIN PLAY LOOP -->
+      <section id="play" v-if="playing">
+        <section id="countdown" v-if="startCountdown >= 0">
+          <div class="container">
+            <div class="progress" style="height: 30px;" v-if="originalStartCountdown >= 0">
+              <div class="progress-bar bg-primary" role="progressbar" :style="'width: ' + ((startCountdown / originalStartCountdown) * 100) + '%;'">!{ startCountdown } seconds left!</div>
+            </div>
+            <h3>!{ question.prompt }</h3>
+          </div>
+        </section>
+
+        <section id="question" v-else-if="answerCountdown >= 0 && startCountdown < 0">
+          <div class="container">
+            <h3>!{ question.prompt }</h3>
+            <p class="lead">Pick an answer below. You have !{ answerCountdown } seconds left to choose.</p>
+
+            <div class="progress mb-4 mt-4">
+              <div class="progress-bar bg-secondary" role="progressbar" :style="'width: ' + ((answerCountdown / originalAnswerCountdown) * 100) + '%;'">!{ answerCountdown <= 0 ? '0' : answerCountdown } seconds left!</div>
+            </div>
+
+            <div id="answer-choice" v-if="question.type == 'choice'">
+              <button type="button" class="btn btn-primary btn-lg btn-block" v-for="answer in question.answers" v-on:click="submitAnswer(answer)">!{ answer }</button>
+            </div>
+            <div id="answer-unsupported" v-else>
+              <p class="text-center text-danger lead"><i>Unsupported Question Type!</i></p>
+            </div>
+          </div>
+        </section>
+
+        <section id="idle" v-else>
+          <div class="container">
+            <h3>Sit back and relax.</h3>
+            <p class="lead">A question will arrive on your device shortly...</p>
+          </div>
+        </section>
+      </section>
+
+
+      <section id="status" v-if="debug">
+        <div class="container">
+          <h1>Status</h1>
+          <ul>
+            <li><b>Connection Status:</b> !{ connected ? 'Connected' : 'Disconnected' }</li>
+            <li><b>Connection ID:</b> <code>!{ $socket.id }</code></li>
+            <li><b>Question:</b> <i v-if="!question">n/a</i></li>
+            <ul v-if="question">
+              <li><b>Type:</b> !{ question.type }</li>
+              <li><b>Prompt:</b> !{ question.prompt }</li>
+              <li><b>Answers:</b> !{ question.answers }</li>
+              <li>
+                <b>Countdown:</b>
+                <span v-if="startCountdown >= 0">!{ startCountdown } seconds to prepare!</span>
+                <span v-else-if="answerCountdown >= 0">!{ answerCountdown } seconds to answer!</span>
+                <span v-else>Question finished!</span>
+              </li>
+            </ul>
+          </ul>
+        </div>
+      </section>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/jquery-3.3.1.slim.min.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/popper.min.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/bootstrap.min.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/vue.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/es6-promise.auto.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/vue-socketio.js') }}"></script>
+    <script>
+      Vue.use(new VueSocketIO({
+        debug: true,
+        connection: "http://" + document.domain + ":" + location.port
+      }));
+
+      var app = new Vue({
+        delimiters: ["!{", "}"],
+        el: '#app',
+        data: {
+          profile: {
+            // name: "",
+            group: "",
+            leader: false
+          },
+          guid: "",
+          join: false,
+          watch: false,
+          playing: false,
+          connected: false,
+          question: false,
+          startCountdown: -1,
+          originalStartCountdown: -1,
+          answerCountdown: -1,
+          originalAnswerCountdown: -1,
+          timer: null,
+          n_members: 0,
+          n_members_ready: 0,
+          debug: false,
+        },
+        sockets: {
+
+          connect() {
+            this.connected = true;
+          },
+          disconnect() {
+            this.connected = false;
+          },
+          reset() {
+            this.reset();
+          },
+          set_player(data) {
+            console.log("Fetch success!");
+            this.profile.group = data.group;
+            this.profile.leader = data.leader;
+            this.guid = data.guid;
+            this.join = data.join;
+            this.watch = data.watch;
+
+            if (this.profile.group != "") {
+              this.joinGroup();
+            }
+          },
+          new_group_started(data) {
+            console.log(data);
+            this.profile.group = data.group;
+            this.profile.leader = true;
+            this.joinGroup();
+          },
+          
+          group_joined(data) {
+            console.log(data);
+            this.join = true;
+          },
+          n_group_members(data) {
+            console.log(data);
+            this.n_members = data.number;
+          },
+          round_started(data) {
+            this.playing = true;
+            this.startCountdown = 5; 
+            this.originalStartCountdown = 5;
+            this.startTimer();
+          },
+          show_next_item(data) {
+            console.log("show_next_item", data);
+            if (data.type == "message") {
+              this.originalStartCountdown = data.time;
+              this.startCountdown = data.time;
+
+              if (this.question == false) this.question = {};
+              this.$set(this.question, "prompt", data.prompt);
+
+              this.startTimer();
+            }
+            else if (data.type == "choice") {
+              if (this.question == false) this.question = {};
+              this.$set(this.question, "prompt", data.prompt);
+              this.$set(this.question, "answers", this.shuffle(data.answers));
+              this.$set(this.question, "type", data.type);
+              this.showFeedback = false;
+
+              this.originalAnswerCountdown = data.time;
+              this.answerCountdown = data.time;
+              this.startTimer();
+            }
+            else if (data.type == "end") {
+              this.reset();   // TODO have a way to keep the same group together?
+            }
+          },
+          fail (data){
+            // TODO warn the user somehow.
+            console.warn(data);
+            this.reset();
+          }
+        },
+        methods: {
+          reset() {
+            this.profile = {
+              group: "",
+              leader: false
+            };
+            this.guid = "";
+            this.join = false;
+            this.watch = false;
+            this.playing = false;
+            this.question = false;
+            this.startCountdown = -1;
+            this.originalStartCountdown = -1;
+            this.answerCountdown = -1;
+            this.originalAnswerCountdown = -1;
+            this.timer = null;
+            this.n_members = 0;
+          },
+          startNewGroup() {
+            this.$socket.emit("start_group", {
+                guid: this.guid,
+            });
+          },
+          joinGroup() {
+            this.$socket.emit("join_group", {
+                guid: this.guid,
+                group: this.profile.group,
+            });
+            // TODO if leader shut down the group.
+          },
+          leaveGroup() {
+            this.$socket.emit("leave_group", {
+                guid: this.guid,
+                group: this.profile.group,
+            });
+          },
+          startRound() {
+            this.$socket.emit("start_round", {
+                group: this.profile.group,
+                guid: this.guid,
+            });
+          },
+          requestNextItem() {
+            console.log("requestNextItem, leader = ", this.profile.leader);
+            if (this.profile.leader == true) {
+              this.$socket.emit("send_next_item", {
+                group: this.profile.group,
+                guid: this.guid,
+              });
+            }
+          },
+          submitAnswer(answer) {
+            this.$socket.emit("answer", {
+              answer: answer,
+              group: this.profile.group,
+              guid: this.guid,
+            });
+          },
+          genGuid() {
+            function _p8(s) {
+              var p = (Math.random().toString(16)+"000000000").substr(2,8);
+              return s ? "-" + p.substr(0,4) + "-" + p.substr(4,4) : p ;
+            }
+            return _p8() + _p8(true) + _p8(true) + _p8();
+          },
+          shuffle(a) {
+            var j, x, i;
+            for (i = a.length - 1; i > 0; i--) {
+                j = Math.floor(Math.random() * (i + 1));
+                x = a[i];
+                a[i] = a[j];
+                a[j] = x;
+            }
+            return a;
+          },
+          startTimer() {
+            this.timer = setInterval(() => this.countdown(), 1000);
+          },
+          stopTimer() {
+            clearInterval(this.timer);
+            this.timer = null;
+          },
+          countdown() {
+            if (!this.timer) return;
+            if (this.startCountdown >= 0) {
+              this.startCountdown--;
+              return;
+            }
+            if (this.answerCountdown >= 0) {
+              this.answerCountdown--;
+              return;
+            }
+            this.requestNextItem();
+            this.stopTimer();
+          },
+        },
+        computed: {
+        },
+        watch: {
+        },
+        mounted() {
+          this.reset();
+
+          if (localStorage.guid) {
+            console.log("GUID loaded from local storage!");
+            this.guid = localStorage.guid;
+            console.log("Attempting to load state from game server...");
+            this.$socket.emit("fetch", {
+              guid: this.guid
+            });
+          } else {
+            var g = this.genGuid();
+            console.log("Generated new GUID " + g);
+            this.guid = g;
+            localStorage.guid = g;
+          }
+        },
+        filters: {
+          ordinal: function(i) {
+            if (!i) return "";
+            var j = i % 10,
+            k = i % 100;
+            if (j == 1 && k != 11) {
+                return i + "st";
+            }
+            if (j == 2 && k != 12) {
+                return i + "nd";
+            }
+            if (j == 3 && k != 13) {
+                return i + "rd";
+            }
+            return i + "th";
+          }
+        }
+      });
+    </script>
+  </body>
+</html>

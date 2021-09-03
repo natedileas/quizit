@@ -4,6 +4,8 @@ import time
 import math
 import random
 import logging
+import pathlib
+
 
 from flask_socketio import SocketIO, join_room, leave_room, emit
 from flask import Flask, render_template, request
@@ -20,6 +22,8 @@ players = []
 groups = {}
 
 config = cfg.load()
+
+QUIZ_DIR = pathlib.Path(__file__).parent.resolve() / 'quizzes'
 
 
 @app.route("/")
@@ -110,7 +114,7 @@ def start_group(json):
     groups[new_group_id] = {
         'id': new_group_id,
         'active': False,
-        'items': quiz.Quiz("quizzes/test.yaml"),
+        'items': quiz.Quiz(QUIZ_DIR / "test.yaml"),
         'n_players': 0
     }
 
