@@ -21,77 +21,74 @@
         </span>
       </nav>
 
-      <section id="setup" v-if="!profile.name || !profile.team || !ready">
+      <!-- SETUP - join / create / watch group -->
+      <section id="setup" v-if="!join">
         <div class="container">
           <h3>Welcome to Quizit!</h3>
-          <p class="lead">
-            To get started, you will need to tell us your name and what group you are in. Make sure that you use a name that
-            other people will know you as. Once you've done that, hit the ready button.
-          </p>
+
+          <button type="button" class="btn btn-lg btn-block btn-success" v-on:click="startNewGroup()"><i class="fas fa-check"></i> Start A Group</button>
+
           <div class="form-group">
-            <label for="name">Name</label>
-            <input type="email" class="form-control" id="name" v-model="profile.name" :disabled="ready">
+            <label for="group">Group ID</label>
+            <input type="email" class="form-control" id="group" v-model="profile.group" :disabled="join">
           </div>
-          <div class="form-group">
-            <label for="team">Team</label>
-            <select class="form-control" id="team" v-model="profile.team" :disabled="ready">
-              <option v-for="team in teams" :key="team.id" :value="team.id">!{ team.name }</option>
-            </select>
-          </div>
-          <p class="text-danger"><i class="fas fa-exclamation-triangle"></i> Once you ready, you cannot unready! Make sure that your name and team are correct.</p>
-          <button type="button" class="btn btn-lg btn-block btn-success" v-on:click="ready = true" :disabled="!profile.name || !profile.team"><i class="fas fa-check"></i> Ready</button>
+          <button type="button" class="btn btn-lg btn-block btn-success" v-on:click="joinGroup()" :disabled="!profile.group"><i class="fas fa-check"></i>Join A Group</button>
+          
+          <button type="button" class="btn btn-lg btn-block btn-success" v-on:click="watch = true" :disabled="!profile.group"><i class="fas fa-check"></i>Watch A Group</button>
         </div>
       </section>
 
-      <section id="countdown" v-else-if="startCountdown >= 0">
-        <div class="container">
-          <p class="lead">Here is the question for the next round. Have a read before the answers come up.</p>
-          <h3>!{ question.prompt }</h3>
-          <div class="progress" style="height: 30px;" v-if="originalStartCountdown >= 0">
-            <div class="progress-bar bg-primary" role="progressbar" :style="'width: ' + ((startCountdown / originalStartCountdown) * 100) + '%;'">!{ startCountdown } seconds left!</div>
-          </div>
-        </div>
+      <!-- WAITING FOR GROUP START -->
+      <section id="leader-start" v-if="profile.leader && !playing">
+        <p>Your group ID is <b> !{ profile.group } </b>. Let everyone know!</p>
+
+        <button type="button" class="btn btn-lg btn-block btn-success" v-on:click="startRound()"><i class="fas fa-times"></i>Start</button>
       </section>
 
-      <section id="question" v-else-if="answerCountdown >= 0 && startCountdown < 0">
-        <div class="container">
-          <h3>!{ question.prompt }</h3>
-          <p class="lead">Pick an answer below. You have !{ answerCountdown } seconds left to choose.</p>
+      <section id="join-group" v-if="join && !playing">
+        <!-- TODO show user count + readiness somehow. -->
+        <p>You're in !{ profile.group } with !{ n_members } people. </p>
 
-          <div class="progress mb-4 mt-4">
-            <div class="progress-bar bg-secondary" role="progressbar" :style="'width: ' + ((answerCountdown / originalAnswerCountdown) * 100) + '%;'">!{ answerCountdown <= 0 ? '0' : answerCountdown } seconds left!</div>
-          </div>
-
-          <div id="answer-choice" v-if="question.type == 'choice'">
-            <button type="button" class="btn btn-primary btn-lg btn-block" v-for="answer in question.answers" v-on:click="submitAnswer(answer)">!{ answer }</button>
-          </div>
-          <div id="answer-unsupported" v-else>
-            <p class="text-center text-danger lead"><i>Unsupported Question Type!</i></p>
-          </div>
-        </div>
+        <button type="button" class="btn btn-lg btn-block btn-danger" v-on:click="leaveGroup()"><i class="fas fa-times"></i> Leave Group</button>
       </section>
 
-      <section id="idle" v-else>
-        <div class="container">
-          <h3>Sit back and relax.</h3>
-          <p class="lead">A question will arrive on your device shortly...</p>
-
-          <div class="alert" :class="{ 'alert-success': feedback.correct, 'alert-danger': !feedback.correct }" role="alert" v-if="showFeedback">
-            <span v-if="feedback.correct"><i class="fas fa-check"></i> Congrats! You got the last question correct and scored <b>!{ feedback.score }</b> points!</span>
-            <span v-else><i class="fas fa-times"></i> Aww! You got the last question wrong.</span>
+      <!-- MAIN PLAY LOOP -->
+      <section id="play" v-if="playing">
+        <section id="countdown" v-if="startCountdown >= 0">
+          <div class="container">
+            <div class="progress" style="height: 30px;" v-if="originalStartCountdown >= 0">
+              <div class="progress-bar bg-primary" role="progressbar" :style="'width: ' + ((startCountdown / originalStartCountdown) * 100) + '%;'">!{ startCountdown } seconds left!</div>
+            </div>
+            <h3>!{ question.prompt }</h3>
           </div>
+        </section>
 
-          <div v-if="showFeedback">
-            <p>You have <b>!{ currentPlayerPoints } points</b> and are currently in <b>!{ currentPlayerPosition | ordinal }</b> position.</p>
-            <p>Your team has <b>!{ currentTeamPoints } points</b> and your team is currently in <b>!{ currentTeamPosition | ordinal }</b> position.</p>
-          </div>
+        <section id="question" v-else-if="answerCountdown >= 0 && startCountdown < 0">
+          <div class="container">
+            <h3>!{ question.prompt }</h3>
+            <p class="lead">Pick an answer below. You have !{ answerCountdown } seconds left to choose.</p>
 
-          <div v-if="!question">
-            <p>Hello !{ profile.name }, you are in !{ teamObj.name }. <i>Incorrect? Unready below</i></p>
-            <button type="button" class="btn btn-lg btn-block btn-danger" v-on:click="ready = false"><i class="fas fa-times"></i> Unready</button>
+            <div class="progress mb-4 mt-4">
+              <div class="progress-bar bg-secondary" role="progressbar" :style="'width: ' + ((answerCountdown / originalAnswerCountdown) * 100) + '%;'">!{ answerCountdown <= 0 ? '0' : answerCountdown } seconds left!</div>
+            </div>
+
+            <div id="answer-choice" v-if="question.type == 'choice'">
+              <button type="button" class="btn btn-primary btn-lg btn-block" v-for="answer in question.answers" v-on:click="submitAnswer(answer)">!{ answer }</button>
+            </div>
+            <div id="answer-unsupported" v-else>
+              <p class="text-center text-danger lead"><i>Unsupported Question Type!</i></p>
+            </div>
           </div>
-        </div>
+        </section>
+
+        <section id="idle" v-else>
+          <div class="container">
+            <h3>Sit back and relax.</h3>
+            <p class="lead">A question will arrive on your device shortly...</p>
+          </div>
+        </section>
       </section>
+
 
       <section id="status">
         <div class="container">
@@ -132,13 +129,15 @@
         delimiters: ["!{", "}"],
         el: '#app',
         data: {
-          teams: {{ config.teams }},
           profile: {
-            name: "",
-            team: ""
+            // name: "",
+            group: "",
+            leader: false
           },
           guid: "",
-          ready: false,
+          join: false,
+          watch: false,
+          playing: false,
           connected: false,
           question: false,
           startCountdown: -1,
@@ -147,68 +146,151 @@
           originalAnswerCountdown: -1,
           timer: null,
           navStatus: 0,
-          feedback: {
-            correct: false,
-            score: 0
-          },
-          showFeedback: false,
-          showLeaderboard: false,
-          leaderboard: {
-            player: [],
-            team: []
-          }
+          n_members: 0,
+          n_members_ready: 0,
         },
         sockets: {
+
           connect() {
             this.connected = true;
-
-            if (this.profile.name && this.profile.team) {
-              console.log("Sending ready event...");
-              this.readyEvent(this.ready);
-            }
           },
           disconnect() {
             this.connected = false;
           },
-          next_question(data) {
-            if (this.question == false) this.question = {};
-            this.$set(this.question, "prompt", data.prompt);
-            this.$set(this.question, "answers", this.shuffle(data.answers));
-            this.$set(this.question, "type", data.type);
-            this.showFeedback = false;
-          },
-          start_question(data) {
-            console.log("SQ", data);
-            this.originalStartCountdown = data.start_time;
-            this.startCountdown = data.start_time;
-            this.originalAnswerCountdown = data.answer_time;
-            this.answerCountdown = data.answer_time;
-            this.startTimer();
+          reset() {
+            this.reset();
           },
           set_player(data) {
             console.log("Fetch success!");
-            this.profile.name = data.name || this.profile.name;
-            this.profile.team = data.team || this.profile.team;
-            this.ready = data.ready || this.ready;
-            this.guid = data.guid || this.ready;
+            this.profile.group = data.group;
+            this.profile.leader = data.leader;
+            this.guid = data.guid;
+            this.join = data.join;
+            this.watch = data.watch;
           },
-          answer_feedback(data) {
-            if (data.show) {
-              this.showFeedback = true;
-              this.fetchLeaderboard();
-            } else {
-              this.feedback = data;
+          new_group_started(data) {
+            console.log(data);
+            this.profile.group = data.group;
+            this.profile.leader = true;
+            this.joinGroup();
+          },
+          
+          group_joined(data) {
+            console.log(data);
+            this.join = true;
+          },
+          group_join_fail(data) {
+            console.log(data);
+            this.join = false;
+          },
+          n_group_members(data) {
+            console.log(data);
+            this.n_members = data.number;
+          },
+
+          round_start_fail(data) {
+            // TODO show fail message
+            console.log(data);
+          },
+
+          round_started(data) {
+            this.playing = true;
+            this.startCountdown = 5; 
+            this.originalStartCountdown = 5;
+            this.startTimer();
+          },
+          
+          show_next_item(data) {
+            console.log("show_next_item", data);
+            if (data.type == "message") {
+              this.originalStartCountdown = data.time;
+              this.startCountdown = data.time;
+
+              if (this.question == false) this.question = {};
+              this.$set(this.question, "prompt", data.prompt);
+
+              this.startTimer();
+            }
+            else if (data.type == "choice") {
+              if (this.question == false) this.question = {};
+              this.$set(this.question, "prompt", data.prompt);
+              this.$set(this.question, "answers", this.shuffle(data.answers));
+              this.$set(this.question, "type", data.type);
+              this.showFeedback = false;
+
+              this.originalAnswerCountdown = data.time;
+              this.answerCountdown = data.time;
+              this.startTimer();
+            }
+            else if (data.type == "end") {
+              this.reset();   // TODO have a way to keep the same group together?
             }
           },
-          leaderboard(data) {
-            this.leaderboard = data;
+          no_more_items(data) {
+            this.playing = false;
+          },
+          fail (data){
+            console.warn(data);
           }
         },
         methods: {
-          fetchLeaderboard() {
-            this.$socket.emit("player_command", {
-              action: "leaderboard"
-            })
+          reset() {
+            this.profile = {
+              group: "",
+              leader: false
+            };
+            this.guid = "";
+            this.join = false;
+            this.watch = false;
+            this.playing = false;
+            this.question = false;
+            this.startCountdown = -1;
+            this.originalStartCountdown = -1;
+            this.answerCountdown = -1;
+            this.originalAnswerCountdown = -1;
+            this.timer = null;
+            this.navStatus = 0;
+            this.n_members = 0;
+          },
+          startNewGroup() {
+            this.$socket.emit("start_group", {
+                guid: this.guid,
+            });
+          },
+          joinGroup() {
+            this.$socket.emit("join_group", {
+                guid: this.guid,
+                group: this.profile.group,
+            });
+            // TODO if leader shut down the group.
+          },
+          leaveGroup() {
+            this.$socket.emit("leave_group", {
+                guid: this.guid,
+                group: this.profile.group,
+            });
+          },
+          startRound() {
+            this.$socket.emit("start_round", {
+                group: this.profile.group,
+                guid: this.guid,
+            });
+          },
+          requestNextItem() {
+            console.log("requestNextItem, leader = ", this.profile.leader);
+            if (this.profile.leader == true) {
+              this.$socket.emit("send_next_item", {
+                group: this.profile.group,
+                guid: this.guid,
+              });
+            }
+          },
+          submitAnswer(answer) {
+            this.$socket.emit("answer", {
+              answer: answer,
+              group: this.profile.group,
+              guid: this.guid,
+            });
           },
           genGuid() {
             function _p8(s) {
@@ -244,67 +326,25 @@
               this.answerCountdown--;
               return;
             }
+            this.requestNextItem();
             this.stopTimer();
           },
-          submitAnswer(answer) {
-            this.$socket.emit("player_command", {
-              action: "answer",
-              answer: answer,
-              answerTime: this.answerCountdown
-            });
-            this.stopTimer();
-            this.startCountdown = -1;
-            this.answerCountdown = -1;
-          },
-          readyEvent(ready) {
-            console.log("Sending player ready event!");
-            this.$socket.emit("player_command", {
-              action: "ready",
-              ready: ready,
-              name: this.profile.name,
-              team: this.profile.team,
-              guid: this.guid
-            });
-          },
-          teamInfo(id) {
-            return this.teams.find(x => x.id == id);
-          }
         },
         computed: {
-          teamObj() {
-            return this.teamInfo(this.profile.team);
-          },
-          currentPlayerPoints() {
-            var player = this.leaderboard.player.find(x => x.guid == this.guid);
-            return (player ? player.score : 0);
-          },
-          currentPlayerPosition() {
-            var player = this.leaderboard.player.find(x => x.guid == this.guid);
-            var position = this.leaderboard.player.indexOf(player);
-            return position + 1;
-          },
-          currentTeamPoints() {
-            var team = this.leaderboard.team.find(x => x.team == this.profile.team);
-            return (team ? team.score : 0);
-          },
-          currentTeamPosition() {
-            var team = this.leaderboard.team.find(x => x.team == this.profile.team);
-            var position = this.leaderboard.team.indexOf(team);
-            return position + 1;
-          }
         },
         watch: {
-          ready(val) {
-            this.readyEvent(val);
-          }
+          // ready(val) {
+          //   this.readyEvent(val);
+          // }
         },
         mounted() {
+          this.reset();
+
           if (localStorage.guid) {
             console.log("GUID loaded from local storage!");
             this.guid = localStorage.guid;
             console.log("Attempting to load state from game server...");
-            this.$socket.emit("player_command", {
-              action: "fetch",
+            this.$socket.emit("fetch", {
               guid: this.guid
             });
           } else {
