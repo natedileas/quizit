@@ -15,6 +15,7 @@ def available_quizzes():
         file = open(quiz, "r")
         data = yaml.load(file, Loader=yaml.FullLoader)
         output.append({"data": data, "file": quiz})
+
     return output
 
 
@@ -29,24 +30,29 @@ class Quiz:
         self.file = quiz_path
         self.data = yaml.load(file, Loader=yaml.FullLoader)
         self._current = -1
+        self.answers = []
 
     def next_question(self):
-        questions = len(self.data["questions"]) - 1
-        if self._current < questions:
+        n_questions = len(self.data["questions"]) - 1
+
+        if self._current < n_questions:
             self._current += 1
         else:
             self._current = -2
             return {'type': 'end'}
-        return self.data["questions"][self._current]
 
-    def current_question(self):
-        if self._current == -1:
-            return "start"
-        elif self._current == -2:
-            return {'type': 'end'}
-        else:
-            return self.data["questions"][self._current]
+        question = self.data["questions"][self._current]
+
+        if question.get('format', False):
+            # TODO add docs about what is available here.
+            question['prompt'] = question['prompt'].format(
+                n_questions=n_questions,
+                n_answers=len(self.answers),
+                current_question=self._current,
+            )
+
+        return question
 
     def got_answer(self, answer_json):
         # TODO store this info so it can be injected into the template.
-        pass
+        self.answers.append(answer_json)

@@ -6,6 +6,10 @@ Quizit is designed to be run on a laptop or single board computer. Each of the p
 
 Quizit was originally made for an event in less than a week. The venue didn't have internet and we wanted to still have a 'Kahoot-like' quiz.
 
+## nate dileas
+
+This version is more like jackbox / quiplash, which does not require an "admin" or teacher view. Instead, it relies on timeouts and a leader role, with an optional spectator role for viewing on a big screen. 
+
 ## Setup
 
 ```bash

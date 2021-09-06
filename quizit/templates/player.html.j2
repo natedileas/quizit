@@ -11,11 +11,11 @@
     <title>Quizit</title>
   </head>
   <body>
+    <!-- TODO put a margin in -->
     <div id="app">
       <nav class="navbar navbar-dark" :class="{ 'bg-primary': connected, 'bg-danger': !connected }">
         <a class="navbar-brand" href="#">Quizit</a>
         <span class="navbar-text">
-          !{ profile.name } <span v-if="profile.team">(!{ teamObj.name })</span>
           <i class="fas" :class="{ 'fa-link': connected, 'fa-unlink': !connected }"></i>
           <i style="font-family: monospace;" v-if="$socket.id">!{ $socket.id.substring(0, 4) }</i>
         </span>
@@ -26,15 +26,19 @@
         <div class="container">
           <h3>Welcome to Quizit!</h3>
 
-          <button type="button" class="btn btn-lg btn-block btn-success" v-on:click="startNewGroup()"><i class="fas fa-check"></i> Start A Group</button>
+          <button type="button" class="btn btn-lg btn-block btn-success" v-on:click="startNewGroup()"><i class="fas"></i> Start A Group</button>
 
           <div class="form-group">
             <label for="group">Group ID</label>
             <input type="email" class="form-control" id="group" v-model="profile.group" :disabled="join">
           </div>
-          <button type="button" class="btn btn-lg btn-block btn-success" v-on:click="joinGroup()" :disabled="!profile.group"><i class="fas fa-check"></i>Join A Group</button>
+          <button type="button" class="btn btn-lg btn-block btn-success" v-on:click="joinGroup()" :disabled="!profile.group"><i class="fas"></i>Join A Group</button>
           
-          <button type="button" class="btn btn-lg btn-block btn-success" v-on:click="watch = true" :disabled="!profile.group"><i class="fas fa-check"></i>Watch A Group</button>
+          <button type="button" class="btn btn-lg btn-block btn-success" v-on:click="joinGroup(watch=true)" :disabled="!profile.group"><i class="fas"></i>Watch A Group</button>
+
+          <div v-if="group_join_fail">
+            <p style="color: red"> !{group_join_fail.reason} </p>
+          </div>
         </div>
       </section>
 
@@ -42,14 +46,13 @@
       <section id="leader-start" v-if="profile.leader && !playing">
         <p>Your group ID is <b> !{ profile.group } </b>. Let everyone know!</p>
 
-        <button type="button" class="btn btn-lg btn-block btn-success" v-on:click="startRound()"><i class="fas fa-times"></i>Start</button>
+        <button type="button" class="btn btn-lg btn-block btn-success" v-on:click="startRound()"><i class="fas"></i>Start</button>
       </section>
 
       <section id="join-group" v-if="join && !playing">
-        <!-- TODO show user count + readiness somehow. -->
         <p>You're in !{ profile.group } with !{ n_members } people. </p>
 
-        <button type="button" class="btn btn-lg btn-block btn-danger" v-on:click="leaveGroup()"><i class="fas fa-times"></i> Leave Group</button>
+        <button type="button" class="btn btn-lg btn-block btn-danger" v-on:click="leaveGroup()"><i class="fas"></i> Leave Group</button>
       </section>
 
       <!-- MAIN PLAY LOOP -->
@@ -146,8 +149,8 @@
           originalAnswerCountdown: -1,
           timer: null,
           n_members: 0,
-          n_members_ready: 0,
-          debug: false,
+          debug: true,
+          group_join_fail: false,
         },
         sockets: {
 
@@ -178,10 +181,15 @@
             this.profile.leader = true;
             this.joinGroup();
           },
-          
+          group_join_fail(data) {
+            console.log(data);
+            this.group_join_fail = data;
+            this.join = false;
+          },
           group_joined(data) {
             console.log(data);
             this.join = true;
+            this.profile.group = data.group;
           },
           n_group_members(data) {
             console.log(data);
@@ -227,6 +235,7 @@
         },
         methods: {
           reset() {
+            // this.leaveGroup();
             this.profile = {
               group: "",
               leader: false
@@ -248,18 +257,27 @@
                 guid: this.guid,
             });
           },
-          joinGroup() {
+          joinGroup(watch=false) {
+            this.group_join_fail = false;
             this.$socket.emit("join_group", {
                 guid: this.guid,
                 group: this.profile.group,
             });
-            // TODO if leader shut down the group.
+
+            this.watch = watch;
           },
           leaveGroup() {
+            // TODO if leader shut down the group.
             this.$socket.emit("leave_group", {
                 guid: this.guid,
                 group: this.profile.group,
             });
+            if (this.profile.leader) {
+              this.$socket.emit("shutdown_group", {
+                  guid: this.guid,
+                  group: this.profile.group,
+              });
+            }
           },
           startRound() {
             this.$socket.emit("start_round", {

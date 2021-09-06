@@ -7,7 +7,7 @@ import logging
 import pathlib
 
 
-from flask_socketio import SocketIO, join_room, leave_room, emit
+from flask_socketio import SocketIO, join_room, leave_room, close_room, rooms, emit
 from flask import Flask, render_template, request
 
 from quizit import quiz
@@ -16,7 +16,7 @@ from quizit import config as cfg
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = "secret!"
-socketio = SocketIO(app)
+socketio = SocketIO(app, logger=True)
 
 players = []
 groups = {}
@@ -125,9 +125,24 @@ def start_group(json):
     if player_index:
         players[player_index]['leader'] = True
 
-    emit('new_group_started', {'group': new_group_id, 'guid': json['guid']})
+    emit('new_group_started', {
+        'group': new_group_id, 'guid': json['guid']})
 
 # TODO shutdown group
+
+
+@socketio.on('shutdown_group')
+def shutdown_group(json):
+    """ The leader has exited or something else has happened. """
+    global groups
+
+    # TODO validation
+    group = json['group']
+
+    groups[group]['active'] = False
+
+    socketio.emit('reset', to=group)
+    close_room(group)
 
 
 @socketio.on('join_group')
@@ -140,8 +155,15 @@ def join_group(json):
     # TODO check if the maximum number has been reached
     # TODO other validation
     group = json['group']
-    groups[group]['n_players'] += 1
+    try:
+        groups[group]['n_players'] += 1
+    except KeyError:
+        emit('group_join_fail', {'reason': f'Cannot join {group}. Group does not exist.'})
+        return
+
+    logging.info(rooms())
     join_room(group)
+    logging.info(rooms())
 
     player_index = next(
         (i for (i, x) in enumerate(players)
@@ -151,8 +173,12 @@ def join_group(json):
         players[player_index]['group'] = group
         players[player_index]['join'] = True
 
-    emit('group_joined')
-    emit('n_group_members', dict(number=groups[group]['n_players']), to=group)
+    logging.info('player %s joining group %s.', request.sid, group)
+    emit('group_joined', {'group': group})
+
+    logging.info('n_group_members %s.', groups[group]['n_players'])
+    socketio.emit('n_group_members', dict(
+        number=groups[group]['n_players']), to=group)
 
 
 @socketio.on('leave_group')
@@ -162,6 +188,15 @@ def leave_group(json):
     global players
     # TODO check if member in group
     # TODO check group exists
+    group = json['group']
+
+    try:
+        groups[group]['n_players'] -= 1
+    except KeyError:
+        logging.warning(
+            'player %s tried to leave group %s which does not exist.', request.sid, group)
+        emit('fail', {'reason': 'group does not exist'})
+        return
 
     player_index = next(
         (i for (i, x) in enumerate(players)
@@ -171,11 +206,13 @@ def leave_group(json):
         players[player_index]['group'] = ""
         players[player_index]['join'] = False
 
-    group = json['group']
+    logging.info('player %s leaving group %s.', request.sid, group)
     leave_room(group)
-    groups[group]['n_players'] -= 1
-    emit('n_group_members', dict(
+
+    logging.info('n_group_members %s.', groups[group]['n_players'])
+    socketio.emit('n_group_members', dict(
         number=groups[group]['n_players']), to=group)
+
     emit('reset')
 
 
@@ -193,10 +230,10 @@ def start_round(json):
     # TODO check that the starter is a member of the group and the leader.
     group['active'] = True
 
-    emit('round_started', {'group': group['id']}, to=group['id'])
+    logging.info('round starting for group: %s', group['id'])
+    socketio.emit('round_started', {
+        'group': group['id']}, to=group['id'])
 
-
-# TODO end_round
 
 @socketio.on('send_next_item')
 def send_next_item(json):
@@ -208,7 +245,8 @@ def send_next_item(json):
         return
 
     item = group['items'].next_question()
-    emit('show_next_item', item, to=group['id'])
+    logging.info('sending item %s to group: %s', item, group['id'])
+    socketio.emit('show_next_item', item, to=group['id'])
 
 
 @socketio.on('answer')

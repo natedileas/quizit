@@ -8,6 +8,10 @@ questions:
     answers: [A, B, C, D]
     correct: A
     time: 5.0
+  - type: message
+    prompt: '{n_answers} {n_questions} {current_question} this is a message'
+    time: 5.0
+    format: True
   - type: choice
     prompt: C is the correct answer (2)
     answers: [A, B, C, D]
@@ -18,5 +22,6 @@ questions:
     answers: [A, B, C, D]
     correct: B
     time: 5.0
+
 
     
